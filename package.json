@@ -4,8 +4,7 @@
   "sideEffects": false,
   "type": "module",
   "scripts": {
-    "dev": "wrangler dev --port 5173",
-    "build": "vite build",
+    "dev": "vite",
     "build:dev": "vite build --mode development",
     "preview": "vite preview",
     "lint": "eslint .",

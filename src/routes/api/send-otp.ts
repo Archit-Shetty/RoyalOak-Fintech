@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { globalOtpStore } from "@/lib/otp-store";
 
 export const Route = createFileRoute("/api/send-otp")({
   server: {
@@ -68,6 +69,7 @@ export const Route = createFileRoute("/api/send-otp")({
         // 2. Storage: Use the context to access the KV namespace
         const sessionId = Math.random().toString(36).slice(2, 10);
         const expiresAt = Date.now() + 5 * 60 * 1000;
+        const sessionPayload = JSON.stringify({ otp, email, expiresAt });
 
         const cloudflare = (context as any);
         const KV = 
@@ -77,6 +79,7 @@ export const Route = createFileRoute("/api/send-otp")({
 
         if (KV && typeof KV.put === 'function') {
           await KV.put(sessionId, JSON.stringify({ otp, email, expiresAt }));
+          console.log("✅ Saved to Cloudflare KV");
         } else {
           // DEBUG: This will print to your VS Code terminal
           console.error("KV NOT FOUND. Available keys in context:", Object.keys(cloudflare || {}));
@@ -86,6 +89,10 @@ export const Route = createFileRoute("/api/send-otp")({
           // This allows you to test the email sending part.
           console.warn("Proceeding without KV storage (OTP verification will fail).");
         }
+
+        // B. ALWAYS save to memory store for local development reliability
+        globalOtpStore.set(sessionId, sessionPayload);
+        console.log(`✅ Session [${sessionId}] saved to memory store for verification.`);
 
         return new Response(JSON.stringify({ sessionId, expiresAt }), {
           headers: { "Content-Type": "application/json" },
