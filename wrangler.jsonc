@@ -1,0 +1,16 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "tanstack-start-app",
+	"compatibility_date": "2025-09-24",
+	"compatibility_flags": [
+		"nodejs_compat"
+	],
+	"main": "@tanstack/react-start/server-entry",
+	"kv_namespaces": [
+		{
+			"binding": "OTP_SESSIONS",
+			"id": "d740a4bfdc164df781987a7025c44982",
+			"preview_id": "d740a4bfdc164df781987a7025c44982"
+		}
+	]
+}
