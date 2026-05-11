@@ -11,17 +11,23 @@ import { useAuth } from "@/lib/auth-context";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/kyc")({
+  // Standardized to handle both boolean and string "true"
+  validateSearch: (search: Record<string, unknown>) => {
+    return {
+      onboarding: search.onboarding === "true" || search.onboarding === true || false,
+    };
+  },
   head: () => ({ meta: [{ title: "Submit KYC — RoyalOak Fintech" }] }),
   component: KYC,
 });
 
 function KYC() {
+  const { onboarding } = Route.useSearch();
   const { user, loading: authLoading } = useAuth();
   const navigate = useNavigate();
   const [form, setForm] = useState({ name: "", email: "", mobile: "", pan: "", aadhaar: "" });
   const [loading, setLoading] = useState(false);
   
-  // State for the file upload
   const [addressProofBase64, setAddressProofBase64] = useState<string | null>(null);
   const [fileName, setFileName] = useState<string>("");
 
@@ -46,12 +52,10 @@ function KYC() {
 
   const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
 
-  // Helper to convert file to Base64 String
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Academic Check: Firestore limit is 1MB. Let's warn if file is too big.
     if (file.size > 1024 * 1024) {
       toast.error("File is too large. Please select an image under 1MB.");
       return;
@@ -77,21 +81,36 @@ function KYC() {
 
     setLoading(true);
     try {
+      // Use { merge: true } to prevent accidental overwrites of existing user fields
       await setDoc(doc(db, "kyc", user.uid), {
         ...form,
-        addressProofBase64, // The image string saved directly in the doc
+        addressProofBase64,
         userId: user.uid,
         status: "submitted",
         submittedAt: serverTimestamp(),
-      });
+      }, { merge: true });
       
-      toast.success("KYC data and documents submitted successfully");
-      navigate({ to: "/risk-assessment" });
+      toast.success("KYC submitted successfully");
+      
+      // Navigate using explicit boolean to match onboarding flow
+      if (onboarding) {
+        navigate({ to: "/risk-assessment", search: { onboarding: true } });
+      } else {
+        navigate({ to: "/profile" });
+      }
     } catch (err: any) {
-      console.error("KYC Error:", err);
       toast.error(err.message ?? "Failed to submit KYC");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleSkip = () => {
+    if (onboarding) {
+      // Force the onboarding state to stay true during the skip teleport
+      navigate({ to: "/risk-assessment", search: { onboarding: true } });
+    } else {
+      navigate({ to: "/profile" });
     }
   };
 
@@ -104,7 +123,7 @@ function KYC() {
           </div>
           <div>
             <h1 className="font-display text-3xl font-bold">Submit KYC</h1>
-            <p className="text-sm text-muted-foreground">Self-attested documents for verification.</p>
+            <p className="text-sm text-muted-foreground">Verification required for investment access.</p>
           </div>
         </div>
 
@@ -127,7 +146,7 @@ function KYC() {
           </div>
 
           <div className="space-y-2">
-            <Label>Proof of Address (Aadhaar)</Label>
+            <Label>Proof of Address (Aadhaar Front/Back)</Label>
             <label className={`mt-2 flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed transition-all px-4 py-8 text-sm
               ${addressProofBase64 ? 'border-green-500/50 bg-green-500/5' : 'border-border bg-secondary/50 hover:border-gold hover:text-foreground'}`}>
               
@@ -144,31 +163,32 @@ function KYC() {
                 </>
               )}
               
-              <input 
-                type="file" 
-                className="hidden" 
-                accept="image/jpeg,image/png" 
-                onChange={handleFileChange}
-              />
+              <input type="file" className="hidden" accept="image/jpeg,image/png" onChange={handleFileChange} />
             </label>
-            {addressProofBase64 && (
-              <p className="text-[10px] text-muted-foreground text-center">
-                Image encoded as Base64 string for Firestore storage
-              </p>
-            )}
           </div>
 
-          <Button 
-            disabled={loading} 
-            type="submit"
-            className="h-12 w-full bg-gold-gradient text-gold-foreground font-semibold shadow-lg hover:opacity-90 transition-opacity"
-          >
-            {loading ? (
-              <span className="flex items-center gap-2">
-                <Loader2 className="h-4 w-4 animate-spin" /> Processing Documents...
-              </span>
-            ) : "Confirm & Submit KYC"}
-          </Button>
+          <div className="flex flex-col gap-3 mt-2">
+            <Button 
+              disabled={loading} 
+              type="submit"
+              className="h-12 w-full bg-gold-gradient text-gold-foreground font-semibold shadow-lg hover:opacity-90 transition-opacity"
+            >
+              {loading ? (
+                <span className="flex items-center gap-2">
+                  <Loader2 className="h-4 w-4 animate-spin" /> Submitting...
+                </span>
+              ) : "Confirm & Submit KYC"}
+            </Button>
+            
+            <Button 
+              type="button" 
+              variant="ghost" 
+              onClick={handleSkip} 
+              className="text-muted-foreground hover:text-foreground h-11"
+            >
+              Skip for now
+            </Button>
+          </div>
         </form>
       </div>
     </SiteLayout>

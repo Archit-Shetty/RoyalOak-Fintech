@@ -81,7 +81,10 @@ function Register() {
       }
 
       toast.success("Account created!");
-      navigate({ to: "/kyc" });
+      navigate({ 
+        to: "/kyc", 
+        search: { onboarding: true } 
+      });
     } catch (err: any) {
       if (err?.code === "auth/email-already-in-use") {
         toast.error("Email already exists. Please login instead.");
@@ -162,7 +165,10 @@ function Register() {
       }
       
       toast.success("Account created!");
-      navigate({ to: "/kyc" });
+      navigate({ 
+        to: "/kyc", 
+        search: { onboarding: true } 
+      });
     } catch (err: any) {
       toast.error(err.message ?? "Google sign-up failed");
     }

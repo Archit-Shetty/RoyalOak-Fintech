@@ -177,7 +177,14 @@ function ProfilePage() {
                   : "Please complete your KYC to unlock all investing features."}
               </p>
               {profile.kycStatus !== 'submitted' && (
-                <Button onClick={() => navigate({to: '/kyc'})} className="mt-6 border-gold text-gold" variant="outline">
+                <Button 
+                  onClick={() => navigate({
+                    to: '/kyc',
+                    search: { onboarding: false } // Explicitly set to false here
+                  })} 
+                  className="mt-6 border-gold text-gold" 
+                  variant="outline"
+                >
                   Complete KYC
                 </Button>
               )}
