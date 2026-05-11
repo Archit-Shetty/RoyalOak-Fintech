@@ -1,6 +1,6 @@
 import { Link, useNavigate } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
-import { TrendingUp, LogOut } from "lucide-react";
+import { TrendingUp, User } from "lucide-react"; // Replaced LogOut with User icon
 import { useAuth } from "@/lib/auth-context";
 
 const links = [
@@ -12,13 +12,8 @@ const links = [
 ];
 
 export function SiteHeader() {
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
   const navigate = useNavigate();
-
-  const handleLogout = async () => {
-    await logout();
-    navigate({ to: "/" });
-  };
 
   return (
     <header className="sticky top-0 z-40 border-b border-border/60 bg-background/80 backdrop-blur-xl">
@@ -29,6 +24,7 @@ export function SiteHeader() {
           </span>
           <span>RoyalOak<span className="text-gold-gradient">.</span></span>
         </Link>
+
         <nav className="hidden items-center gap-7 md:flex">
           {links.map((l) => (
             <Link
@@ -42,16 +38,25 @@ export function SiteHeader() {
             </Link>
           ))}
         </nav>
+
         <div className="flex items-center gap-2">
           {user ? (
-            <>
-              <Button asChild variant="ghost" size="sm">
+            <div className="flex items-center gap-2">
+              <Button asChild variant="ghost" size="sm" className="hidden sm:flex">
                 <Link to="/dashboard">Dashboard</Link>
               </Button>
-              <Button onClick={handleLogout} variant="outline" size="sm">
-                <LogOut className="h-4 w-4" />
-              </Button>
-            </>
+              
+              {/* Account Pill */}
+              <Link 
+                to="/profile" 
+                className="flex items-center gap-2 rounded-full border border-border bg-secondary/50 px-3 py-1.5 transition-all hover:border-gold/50 hover:bg-secondary"
+              >
+                <div className="h-6 w-6 rounded-full bg-gold-gradient flex items-center justify-center text-[10px] font-bold text-gold-foreground">
+                  {user.displayName?.charAt(0) || user.email?.charAt(0) || "U"}
+                </div>
+                <span className="text-sm font-medium">Account</span>
+              </Link>
+            </div>
           ) : (
             <>
               <Button asChild variant="ghost" size="sm">

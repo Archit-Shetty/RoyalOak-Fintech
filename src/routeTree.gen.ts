@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as RiskAssessmentRouteImport } from './routes/risk-assessment'
 import { Route as RegisterRouteImport } from './routes/register'
+import { Route as ProfileRouteImport } from './routes/profile'
 import { Route as PricingRouteImport } from './routes/pricing'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as KycRouteImport } from './routes/kyc'
@@ -30,6 +31,11 @@ const RiskAssessmentRoute = RiskAssessmentRouteImport.update({
 const RegisterRoute = RegisterRouteImport.update({
   id: '/register',
   path: '/register',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ProfileRoute = ProfileRouteImport.update({
+  id: '/profile',
+  path: '/profile',
   getParentRoute: () => rootRouteImport,
 } as any)
 const PricingRoute = PricingRouteImport.update({
@@ -92,6 +98,7 @@ export interface FileRoutesByFullPath {
   '/kyc': typeof KycRoute
   '/login': typeof LoginRoute
   '/pricing': typeof PricingRoute
+  '/profile': typeof ProfileRoute
   '/register': typeof RegisterRoute
   '/risk-assessment': typeof RiskAssessmentRoute
   '/api/send-otp': typeof ApiSendOtpRoute
@@ -106,6 +113,7 @@ export interface FileRoutesByTo {
   '/kyc': typeof KycRoute
   '/login': typeof LoginRoute
   '/pricing': typeof PricingRoute
+  '/profile': typeof ProfileRoute
   '/register': typeof RegisterRoute
   '/risk-assessment': typeof RiskAssessmentRoute
   '/api/send-otp': typeof ApiSendOtpRoute
@@ -121,6 +129,7 @@ export interface FileRoutesById {
   '/kyc': typeof KycRoute
   '/login': typeof LoginRoute
   '/pricing': typeof PricingRoute
+  '/profile': typeof ProfileRoute
   '/register': typeof RegisterRoute
   '/risk-assessment': typeof RiskAssessmentRoute
   '/api/send-otp': typeof ApiSendOtpRoute
@@ -137,6 +146,7 @@ export interface FileRouteTypes {
     | '/kyc'
     | '/login'
     | '/pricing'
+    | '/profile'
     | '/register'
     | '/risk-assessment'
     | '/api/send-otp'
@@ -151,6 +161,7 @@ export interface FileRouteTypes {
     | '/kyc'
     | '/login'
     | '/pricing'
+    | '/profile'
     | '/register'
     | '/risk-assessment'
     | '/api/send-otp'
@@ -165,6 +176,7 @@ export interface FileRouteTypes {
     | '/kyc'
     | '/login'
     | '/pricing'
+    | '/profile'
     | '/register'
     | '/risk-assessment'
     | '/api/send-otp'
@@ -180,6 +192,7 @@ export interface RootRouteChildren {
   KycRoute: typeof KycRoute
   LoginRoute: typeof LoginRoute
   PricingRoute: typeof PricingRoute
+  ProfileRoute: typeof ProfileRoute
   RegisterRoute: typeof RegisterRoute
   RiskAssessmentRoute: typeof RiskAssessmentRoute
   ApiSendOtpRoute: typeof ApiSendOtpRoute
@@ -200,6 +213,13 @@ declare module '@tanstack/react-router' {
       path: '/register'
       fullPath: '/register'
       preLoaderRoute: typeof RegisterRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/profile': {
+      id: '/profile'
+      path: '/profile'
+      fullPath: '/profile'
+      preLoaderRoute: typeof ProfileRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/pricing': {
@@ -284,6 +304,7 @@ const rootRouteChildren: RootRouteChildren = {
   KycRoute: KycRoute,
   LoginRoute: LoginRoute,
   PricingRoute: PricingRoute,
+  ProfileRoute: ProfileRoute,
   RegisterRoute: RegisterRoute,
   RiskAssessmentRoute: RiskAssessmentRoute,
   ApiSendOtpRoute: ApiSendOtpRoute,
