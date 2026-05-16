@@ -9,6 +9,9 @@ import { Badge } from "@/components/ui/badge";
 import { useState, useEffect } from "react";
 import { Search, Loader2, Landmark, ShieldCheck, Info, ArrowUpRight, ArrowDownRight, Activity, CalendarDays, Hourglass } from "lucide-react";
 import { toast } from "sonner";
+import { useAuth } from "@/lib/auth-context";
+import { doc, getDoc, updateDoc } from "firebase/firestore";
+import { db } from "@/lib/firebase";
 
 export const Route = createFileRoute("/investments")({
   head: () => ({ meta: [{ title: "Investments — RoyalOak Fintech" }] }),
@@ -16,6 +19,7 @@ export const Route = createFileRoute("/investments")({
 });
 
 function Investments() {
+  const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<string>("mf");
   
   // Search Queries
@@ -129,7 +133,7 @@ function Investments() {
     fetchStocks();
   }, [stockQuery, isSearched]);
 
-  // 3. MUTUAL FUND & SIP PARAMETER DETAILS NAV FETCH
+// 3. MUTUAL FUND & SIP PARAMETER DETAILS NAV FETCH (FIXED TYPE COMPARISON)
   const fetchSchemeDetails = async (fund: any, mode: "mf" | "sip", selectedAmt?: number, selectedYears?: number) => {
     setAssetType(mode);
     setSelectedAsset(fund);
@@ -140,6 +144,7 @@ function Investments() {
       setCheckoutAmount(selectedAmt.toString());
       setCheckoutYears(selectedYears);
     } else {
+      // FIXED: Safely default to "2000" since mode here can only be "mf" | "sip"
       setCheckoutAmount("2000");
     }
 
@@ -171,6 +176,7 @@ function Investments() {
   const handleStockClick = (stock: any) => {
     setAssetType("stock");
     setSelectedAsset(stock);
+    setCheckoutAmount("5"); // Default quantity units
     setFundDetails({
       name: stock.company_name,
       code: stock.symbol,
@@ -180,6 +186,109 @@ function Investments() {
       secondaryLabel: "Daily Variance",
       subtext: `BSE Live feed broadcasted at ${new Date().toLocaleTimeString()}`
     });
+  };
+
+  // LIVE FIRESTORE TRANSACTION SYNC SETTLE FUNCTION
+  const handleTransactionSettle = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user) {
+      toast.error("Authentication check failed. Order canceled.");
+      return;
+    }
+
+    setExecuting(true);
+    try {
+      const userRef = doc(db, "users", user.uid);
+      const userSnap = await getDoc(userRef);
+      const currentData = userSnap.data() || {};
+
+      // Pull current states out or initialize to empty defaults
+      const currentPortfolio = currentData.portfolio || { totalValue: 0, todaysPl: 0, invested: 0, xirr: 0, history: [] };
+      const currentHoldings = currentData.holdings || [];
+
+      let transactionValue = 0;
+      let holdingTypeLabel = "";
+      let unitsComputed = 0;
+
+      if (assetType === "mf") {
+        transactionValue = parseFloat(checkoutAmount);
+        holdingTypeLabel = "Equity MF";
+        unitsComputed = transactionValue / (fundDetails?.price || 1);
+      } else if (assetType === "sip") {
+        transactionValue = parseFloat(checkoutAmount); // Initial cash debit installment
+        holdingTypeLabel = "SIPs";
+        unitsComputed = transactionValue / (fundDetails?.price || 1);
+      } else if (assetType === "stock") {
+        const stockQuantity = parseFloat(checkoutAmount);
+        transactionValue = stockQuantity * (fundDetails?.price || 0);
+        holdingTypeLabel = "Stocks";
+        unitsComputed = stockQuantity;
+      }
+
+      // Check if this explicit security is already owned in portfolio matrices
+      const existingHoldingIdx = currentHoldings.findIndex((h: any) => h.name === fundDetails.name);
+      
+      if (existingHoldingIdx > -1) {
+        currentHoldings[existingHoldingIdx].units += unitsComputed;
+        currentHoldings[existingHoldingIdx].val += transactionValue;
+      } else {
+        currentHoldings.push({
+          name: fundDetails.name,
+          type: holdingTypeLabel,
+          units: unitsComputed,
+          val: transactionValue,
+          ret: assetType === "stock" ? 1.4 : 15.8 // Static initial simulation yield
+        });
+      }
+
+      // Re-calculate absolute aggregates values
+      const updatedInvested = (currentPortfolio.invested || 0) + transactionValue;
+      const updatedTotalValue = (currentPortfolio.totalValue || 0) + transactionValue;
+
+      // Recalculate allocation weight distribution data
+      let mfSum = 0, stockSum = 0, sipSum = 0;
+      currentHoldings.forEach((h: any) => {
+        if (h.type === "Equity MF") mfSum += h.val;
+        if (h.type === "Stocks") stockSum += h.val;
+        if (h.type === "SIPs") sipSum += h.val;
+      });
+      const grandSum = mfSum + stockSum + sipSum || 1;
+
+      const updatedAllocation = [
+        { name: "Equity MF", value: Math.round((mfSum / grandSum) * 100) },
+        { name: "Stocks", value: Math.round((stockSum / grandSum) * 100) },
+        { name: "SIPs", value: Math.round((sipSum / grandSum) * 100) },
+        { name: "Insurance", value: currentData.allocation?.[3]?.value || 0 },
+      ];
+
+      // Build out updated chart historical milestones arrays
+      let updatedHistory = currentPortfolio.history || [];
+      if (!updatedHistory.length) {
+        updatedHistory = Array.from({ length: 24 }, (_, i) => ({ m: i, v: 0 }));
+      }
+      // Increment last historical step row to show line progress
+      updatedHistory[updatedHistory.length - 1].v = updatedTotalValue;
+
+      // Commit consolidated payload bundle up to Firestore
+      await updateDoc(userRef, {
+        portfolio: {
+          ...currentPortfolio,
+          invested: updatedInvested,
+          totalValue: updatedTotalValue,
+          history: updatedHistory
+        },
+        holdings: currentHoldings,
+        allocation: updatedAllocation
+      });
+
+      setOrderComplete(true);
+      toast.success("Transaction written to exchange ledger accounts!");
+    } catch (err) {
+      console.error(err);
+      toast.error("Settlement network failure. Please verify limits.");
+    } finally {
+      setExecuting(false);
+    }
   };
 
   return (
@@ -248,7 +357,7 @@ function Investments() {
             )}
           </TabsContent>
 
-          {/* SIP TAB (UPDATED VISUAL MATRIX CONFIG) */}
+          {/* SIP TAB */}
           <TabsContent value="sip" className="animate-in fade-in slide-in-from-bottom-4 duration-500">
             {loadingMf ? (
               <LoadingState message="Connecting to AMFI nodes..." />
@@ -364,7 +473,8 @@ function Investments() {
                     </div>
                 </div>
 
-                <form onSubmit={(e) => { e.preventDefault(); setExecuting(true); setTimeout(() => { setOrderComplete(true); setExecuting(false); }, 2000); }} className="space-y-4 pt-2">
+                {/* UPDATED: Triggers handleTransactionSettle pipeline */}
+                <form onSubmit={handleTransactionSettle} className="space-y-4 pt-2">
                   <div className="space-y-2">
                     <label className="text-xs font-bold uppercase text-muted-foreground tracking-widest">
                        {assetType === "mf" ? "Lumpsum Capital Order Amount" : assetType === "sip" ? "Monthly Installment Amount" : "Purchase Quantity (Units)"}
@@ -375,8 +485,8 @@ function Investments() {
                       </span>
                       <Input 
                         type="number" 
-                        value={assetType === "sip" ? checkoutAmount : undefined}
-                        onChange={assetType === "sip" ? (e) => setCheckoutAmount(e.target.value) : undefined}
+                        value={checkoutAmount}
+                        onChange={(e) => setCheckoutAmount(e.target.value)}
                         placeholder={assetType === "stock" ? "5" : "2,000"} 
                         className="pl-10 h-12 font-bold bg-secondary/20" 
                         required 
@@ -444,7 +554,6 @@ function Investments() {
   );
 }
 
-// REDESIGNED SIP GRID ITEM COMPONENT (WITH DYNAMIC DISPATCH EXTENSIONS)
 function SIPMarketCard({ fund, onSetupMandate }: { fund: any; onSetupMandate: (amount: number, years: number) => void }) {
   const [sipAmount, setSipAmount] = useState<number>(2000);
   const [sipYears, setSipYears] = useState<number>(3);
@@ -483,9 +592,7 @@ function SIPMarketCard({ fund, onSetupMandate }: { fund: any; onSetupMandate: (a
           {fund.schemeName}
         </h3>
 
-        {/* PARAMETER SELECTION DECK */}
         <div className="mt-5 p-4 rounded-xl bg-secondary/30 border border-border/50 space-y-4">
-          {/* Slider 1: Selection for SIP Capital */}
           <div className="space-y-1">
             <div className="flex justify-between items-center text-xs">
               <span className="text-muted-foreground font-medium flex items-center gap-1">
@@ -510,7 +617,6 @@ function SIPMarketCard({ fund, onSetupMandate }: { fund: any; onSetupMandate: (a
             </div>
           </div>
 
-          {/* Slider 2: Selection for SIP Tenure Period */}
           <div className="space-y-1 pt-1 border-t border-border/20">
             <div className="flex justify-between items-center text-xs">
               <span className="text-muted-foreground font-medium flex items-center gap-1">
