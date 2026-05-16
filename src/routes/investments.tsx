@@ -7,7 +7,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { useState, useEffect } from "react";
-import { Search, Loader2, Landmark, ShieldCheck, Info, ArrowUpRight, ArrowDownRight, Activity } from "lucide-react";
+import { Search, Loader2, Landmark, ShieldCheck, Info, ArrowUpRight, ArrowDownRight, Activity, CalendarDays, Hourglass } from "lucide-react";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/investments")({
@@ -21,7 +21,7 @@ function Investments() {
   // Search Queries
   const [mfQuery, setMfQuery] = useState("Quant");
   const [stockQuery, setStockQuery] = useState(""); 
-  const [isSearched, setIsSearched] = useState(false); // Track if user triggered search
+  const [isSearched, setIsSearched] = useState(false);
 
   // Data Lists
   const [mfList, setMfList] = useState<any[]>([]);
@@ -33,9 +33,13 @@ function Investments() {
   
   // Dialog / Transaction States
   const [selectedAsset, setSelectedAsset] = useState<any>(null);
-  const [assetType, setAssetType] = useState<"mf" | "stock">("mf");
+  const [assetType, setAssetType] = useState<"mf" | "stock" | "sip">("mf");
   const [fundDetails, setFundDetails] = useState<any>(null);
   const [loadingDetails, setLoadingDetails] = useState(false);
+  
+  // Active selection parameters from grid passed down to checkout modal
+  const [checkoutAmount, setCheckoutAmount] = useState<string>("2000");
+  const [checkoutYears, setCheckoutYears] = useState<number>(3);
   
   const [executing, setExecuting] = useState(false);
   const [orderComplete, setOrderComplete] = useState(false);
@@ -57,13 +61,12 @@ function Investments() {
     fetchFunds();
   }, [mfQuery]);
 
-  // 2. DYNAMIC EQUITIES LOAD (POPULAR FIRST vs SEARCH REQ)
+  // 2. DYNAMIC EQUITIES LOAD
   useEffect(() => {
     const fetchStocks = async () => {
       setLoadingStocks(true);
       try {
         if (!isSearched) {
-          // INITIAL STATE: Fetch standard market heavyweights
           const res = await fetch("http://65.0.104.9/stock/list?symbols=RELIANCE.BO,HDFCBANK.BO,TCS.BO,INFY.BO,SBIN.BO,ICICIBANK.BO");
           const json = await res.json();
           if (json.status === "success" && json.data) {
@@ -71,7 +74,6 @@ function Investments() {
             return;
           }
         } else {
-          // SEARCH STATE: Lookup symbols matching keywords
           if (!stockQuery.trim()) {
             setIsSearched(false);
             return;
@@ -127,11 +129,20 @@ function Investments() {
     fetchStocks();
   }, [stockQuery, isSearched]);
 
-  // 3. MUTUAL FUND DETAIL NAV FETCH
-  const fetchSchemeDetails = async (fund: any) => {
-    setAssetType("mf");
+  // 3. MUTUAL FUND & SIP PARAMETER DETAILS NAV FETCH
+  const fetchSchemeDetails = async (fund: any, mode: "mf" | "sip", selectedAmt?: number, selectedYears?: number) => {
+    setAssetType(mode);
     setSelectedAsset(fund);
     setLoadingDetails(true);
+    
+    // Pass custom selected configurations into state metrics if mapping a SIP mandate
+    if (mode === "sip" && selectedAmt && selectedYears) {
+      setCheckoutAmount(selectedAmt.toString());
+      setCheckoutYears(selectedYears);
+    } else {
+      setCheckoutAmount("2000");
+    }
+
     try {
       const res = await fetch(`https://api.mfapi.in/mf/${fund.schemeCode}`);
       const data = await res.json();
@@ -185,19 +196,19 @@ function Investments() {
             </div>
           </div>
           
-          {/* SENSITIVE INTERACTIVE SEARCH DISPATCHER */}
+          {/* SEARCH HUB */}
           <div className="relative w-full md:w-96">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input 
-              placeholder={activeTab === "mf" ? "Search Mutual Funds (e.g. SBI, Quant)..." : "Search BSE Equities (e.g. Tata, Reliance)..."} 
+              placeholder={activeTab === "stocks" ? "Search BSE Equities (e.g. Tata, Reliance)..." : "Search Mutual Funds (e.g. SBI, Quant)..."} 
               className="pl-10 bg-secondary/30 border-none ring-1 ring-border focus:ring-gold font-medium"
               onKeyDown={(e) => {
                 if (e.key === 'Enter') {
-                  if (activeTab === "mf") {
-                    setMfQuery(e.currentTarget.value);
-                  } else {
+                  if (activeTab === "stocks") {
                     setStockQuery(e.currentTarget.value);
                     setIsSearched(true);
+                  } else {
+                    setMfQuery(e.currentTarget.value);
                   }
                 }
               }}
@@ -210,7 +221,7 @@ function Investments() {
           <TabsList className="bg-secondary/40 border p-1 rounded-xl">
             <TabsTrigger value="mf" className="rounded-lg px-6">Mutual Funds</TabsTrigger>
             <TabsTrigger value="sip" className="rounded-lg px-6">SIP Plans</TabsTrigger>
-            <TabsTrigger value="stocks" className="rounded-lg px-6">BSE Equities (Live)</TabsTrigger>
+            <TabsTrigger value="stocks" className="rounded-lg px-6">BSE Equities</TabsTrigger>
           </TabsList>
 
           {/* MUTUAL FUNDS TAB */}
@@ -226,8 +237,8 @@ function Investments() {
                       {fund.schemeName}
                     </h3>
                     <div className="mt-6 flex items-center justify-between border-t border-border pt-4">
-                      <div className="text-xs font-semibold text-muted-foreground">DIRECT • GROWTH</div>
-                      <Button size="sm" onClick={() => fetchSchemeDetails(fund)} className="bg-gold-gradient text-gold-foreground font-bold">
+                      <div className="text-xs font-semibold text-muted-foreground">LUMPSUM • BUY</div>
+                      <Button size="sm" onClick={() => fetchSchemeDetails(fund, "mf")} className="bg-gold-gradient text-gold-foreground font-bold">
                         Analyze
                       </Button>
                     </div>
@@ -237,11 +248,21 @@ function Investments() {
             )}
           </TabsContent>
 
-          {/* SIP CONTENT TAB */}
-          <TabsContent value="sip" className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-            <SIPCard title="Nifty 50 Index SIP" returns="14.2%" risk="Moderate" min="500" />
-            <SIPCard title="Small Cap Growth SIP" returns="26.8%" risk="Very High" min="1000" />
-            <SIPCard title="Tax Saver (ELSS) SIP" returns="18.5%" risk="High" min="500" />
+          {/* SIP TAB (UPDATED VISUAL MATRIX CONFIG) */}
+          <TabsContent value="sip" className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+            {loadingMf ? (
+              <LoadingState message="Connecting to AMFI nodes..." />
+            ) : (
+              <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+                {mfList.map((fund) => (
+                  <SIPMarketCard 
+                    key={`sip-${fund.schemeCode}`} 
+                    fund={fund} 
+                    onSetupMandate={(amt, yrs) => fetchSchemeDetails(fund, "sip", amt, yrs)} 
+                  />
+                ))}
+              </div>
+            )}
           </TabsContent>
 
           {/* STOCKS CONTENT TAB */}
@@ -249,7 +270,7 @@ function Investments() {
              <div className="rounded-2xl border border-border bg-card overflow-hidden">
                 <div className="p-6 border-b border-border bg-secondary/10 flex justify-between items-center">
                     <h3 className="font-display text-xl font-bold flex items-center gap-2">
-                        <Activity className="h-5 w-5 text-success" /> {isSearched ? "BSE Search Match Results" : "Trending Blue Chips (BSE Live)"}
+                        <Activity className="h-5 w-5 text-success" /> {isSearched ? "BSE Search Match Results" : "Trending Blue Chips"}
                     </h3>
                     {isSearched && (
                       <button 
@@ -346,26 +367,53 @@ function Investments() {
                 <form onSubmit={(e) => { e.preventDefault(); setExecuting(true); setTimeout(() => { setOrderComplete(true); setExecuting(false); }, 2000); }} className="space-y-4 pt-2">
                   <div className="space-y-2">
                     <label className="text-xs font-bold uppercase text-muted-foreground tracking-widest">
-                       {assetType === "mf" ? "Lumpsum Capital Order Amount" : "Purchase Quantity (Units)"}
+                       {assetType === "mf" ? "Lumpsum Capital Order Amount" : assetType === "sip" ? "Monthly Installment Amount" : "Purchase Quantity (Units)"}
                     </label>
                     <div className="relative">
                       <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-muted-foreground">
-                         {assetType === "mf" ? "₹" : "#"}
+                         {assetType === "stock" ? "#" : "₹"}
                       </span>
-                      <Input type="number" placeholder={assetType === "mf" ? "10,000" : "5"} className="pl-10 h-12 font-bold bg-secondary/20" required />
+                      <Input 
+                        type="number" 
+                        value={assetType === "sip" ? checkoutAmount : undefined}
+                        onChange={assetType === "sip" ? (e) => setCheckoutAmount(e.target.value) : undefined}
+                        placeholder={assetType === "stock" ? "5" : "2,000"} 
+                        className="pl-10 h-12 font-bold bg-secondary/20" 
+                        required 
+                      />
                     </div>
                   </div>
+                  
+                  {assetType === "sip" && (
+                    <div className="grid grid-cols-2 gap-3 animate-in fade-in slide-in-from-top-2 duration-300">
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-bold uppercase text-muted-foreground tracking-widest">Debit Day</label>
+                        <Input type="number" min="1" max="28" placeholder="5th" defaultValue="5" className="bg-secondary/20" required />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-bold uppercase text-muted-foreground tracking-widest">Period Tenure</label>
+                        <Input 
+                          type="number" 
+                          value={checkoutYears} 
+                          onChange={(e) => setCheckoutYears(Number(e.target.value))}
+                          min="1" max="15" className="bg-secondary/20 font-bold" required 
+                        />
+                      </div>
+                    </div>
+                  )}
                   
                   <div className="rounded-xl bg-gold-gradient/10 p-5 border border-gold/20">
                     <div className="flex justify-between items-center mb-1">
                       <span className="text-xs font-semibold text-gold/80">Exchange Route Mapping</span>
-                      <span className="text-xs font-mono font-bold uppercase text-foreground">{assetType === "mf" ? "BSE_STAR_MF" : "BSE_CASH_EQUITY"}</span>
+                      <span className="text-xs font-mono font-bold uppercase text-foreground">
+                        {assetType === "mf" ? "BSE_STAR_MF" : assetType === "sip" ? "BSE_STAR_SIP" : "BSE_CASH_EQUITY"}
+                      </span>
                     </div>
                   </div>
 
                   <DialogFooter>
                     <Button type="submit" disabled={executing} className="w-full h-12 bg-gold-gradient text-gold-foreground font-bold">
-                      {executing ? <Loader2 className="animate-spin h-5 w-5" /> : "Confirm via Member Credentials"}
+                      {executing ? <Loader2 className="animate-spin h-5 w-5" /> : assetType === "sip" ? "Start Monthly SIP Mandate" : "Confirm via Member Credentials"}
                     </Button>
                   </DialogFooter>
                 </form>
@@ -378,7 +426,10 @@ function Investments() {
                 <div>
                     <h3 className="text-2xl font-display font-bold">Gateway Settlement Success</h3>
                     <p className="text-sm text-muted-foreground mt-2 px-6">
-                        Order successfully executed against exchange reference node. Terminal ledger verified.
+                        {assetType === "sip" 
+                          ? `Systematic mandate for ₹${Number(checkoutAmount).toLocaleString("en-IN")}/mo registered successfully over a ${checkoutYears}-year deployment envelope.`
+                          : "Order successfully executed against exchange reference node. Terminal ledger verified."
+                        }
                     </p>
                 </div>
                 <Button className="w-full h-12" onClick={() => setSelectedAsset(null)}>
@@ -393,32 +444,123 @@ function Investments() {
   );
 }
 
+// REDESIGNED SIP GRID ITEM COMPONENT (WITH DYNAMIC DISPATCH EXTENSIONS)
+function SIPMarketCard({ fund, onSetupMandate }: { fund: any; onSetupMandate: (amount: number, years: number) => void }) {
+  const [sipAmount, setSipAmount] = useState<number>(2000);
+  const [sipYears, setSipYears] = useState<number>(3);
+  
+  const assumedRate = fund.schemeName.toLowerCase().includes("small") ? 22.4 
+                      : fund.schemeName.toLowerCase().includes("mid") ? 18.2 
+                      : 14.5;
+
+  const getProjections = () => {
+    const P = sipAmount;
+    const i = assumedRate / 12 / 100;
+    const n = sipYears * 12;
+    const maturity = P * ((Math.pow(1 + i, n) - 1) / i) * (1 + i);
+    const invested = P * n;
+    return {
+      invested: invested.toLocaleString("en-IN"),
+      total: Math.round(maturity).toLocaleString("en-IN")
+    };
+  };
+
+  const projections = getProjections();
+
+  return (
+    <Card className="p-6 border-border bg-card/40 backdrop-blur-sm relative overflow-hidden flex flex-col justify-between hover:border-gold/30 transition-all shadow-sm">
+      <div>
+        <div className="flex justify-between items-center mb-3">
+          <span className="text-[10px] font-mono font-bold text-gold uppercase tracking-wider">
+            Code: {fund.schemeCode}
+          </span>
+          <Badge variant="secondary" className="text-[9px] uppercase tracking-wider font-bold bg-secondary px-2">
+            Systematic Plan
+          </Badge>
+        </div>
+
+        <h3 className="font-display text-base font-bold text-foreground leading-snug line-clamp-2 min-h-[2.5rem]">
+          {fund.schemeName}
+        </h3>
+
+        {/* PARAMETER SELECTION DECK */}
+        <div className="mt-5 p-4 rounded-xl bg-secondary/30 border border-border/50 space-y-4">
+          {/* Slider 1: Selection for SIP Capital */}
+          <div className="space-y-1">
+            <div className="flex justify-between items-center text-xs">
+              <span className="text-muted-foreground font-medium flex items-center gap-1">
+                <CalendarDays className="h-3.5 w-3.5 text-gold" /> Monthly Amt:
+              </span>
+              <span className="font-bold font-display text-foreground">₹{sipAmount.toLocaleString("en-IN")}</span>
+            </div>
+            <div className="grid grid-cols-4 gap-1.5 mt-1">
+              {[1000, 2000, 5000, 10000].map((amt) => (
+                <button
+                  key={amt}
+                  onClick={() => setSipAmount(amt)}
+                  className={`py-1 text-[10px] font-bold rounded-md border transition-all ${
+                    sipAmount === amt 
+                      ? "bg-gold text-gold-foreground border-gold" 
+                      : "bg-background hover:bg-secondary border-border"
+                  }`}
+                >
+                  ₹{amt >= 10000 ? `${amt/1000}k` : amt}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Slider 2: Selection for SIP Tenure Period */}
+          <div className="space-y-1 pt-1 border-t border-border/20">
+            <div className="flex justify-between items-center text-xs">
+              <span className="text-muted-foreground font-medium flex items-center gap-1">
+                <Hourglass className="h-3.5 w-3.5 text-gold" /> Period Term:
+              </span>
+              <span className="font-bold text-foreground">{sipYears} Years</span>
+            </div>
+            <div className="grid grid-cols-4 gap-1.5 mt-1">
+              {[1, 3, 5, 10].map((yrs) => (
+                <button
+                  key={yrs}
+                  onClick={() => setSipYears(yrs)}
+                  className={`py-1 text-[10px] font-bold rounded-md border transition-all ${
+                    sipYears === yrs 
+                      ? "bg-gold text-gold-foreground border-gold" 
+                      : "bg-background hover:bg-secondary border-border"
+                  }`}
+                >
+                  {yrs} Yr{yrs > 1 ? 's' : ''}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex justify-between items-center text-[10px] pt-2 border-t border-border/40 text-muted-foreground">
+            <div>Principal: <strong className="text-foreground font-semibold">₹{projections.invested}</strong></div>
+            <div>Maturity ({sipYears}Y): <strong className="text-success font-bold">₹{projections.total}</strong></div>
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-5 flex items-center justify-between text-xs pt-2">
+        <span className="text-muted-foreground">Min SIP: <strong className="text-foreground">₹500</strong></span>
+        <Button 
+          size="sm" 
+          onClick={() => onSetupMandate(sipAmount, sipYears)} 
+          className="bg-gold-gradient text-gold-foreground font-bold text-xs px-4"
+        >
+          Setup Mandate
+        </Button>
+      </div>
+    </Card>
+  );
+}
+
 function LoadingState({ message }: { message: string }) {
   return (
       <div className="flex h-64 flex-col items-center justify-center gap-4 bg-secondary/10 rounded-2xl border border-dashed border-border">
           <Loader2 className="h-8 w-8 animate-spin text-gold" />
           <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground animate-pulse">{message}</p>
       </div>
-  );
-}
-
-function SIPCard({ title, returns, risk, min }: any) {
-  return (
-      <Card className="p-6 border-border/40 hover:shadow-elegant transition-all bg-card/50">
-          <h3 className="font-display text-lg font-bold">{title}</h3>
-          <div className="mt-4 grid grid-cols-2 gap-4">
-              <div>
-                  <p className="text-[10px] font-bold text-muted-foreground uppercase">Expected Returns</p>
-                  <p className="text-2xl font-display font-bold text-success">{returns}</p>
-              </div>
-              <div>
-                  <p className="text-[10px] font-bold text-muted-foreground uppercase">Risk Appetite</p>
-                  <p className="text-sm font-bold text-gold">{risk}</p>
-              </div>
-          </div>
-          <Button className="mt-6 w-full bg-secondary text-foreground hover:bg-gold-gradient hover:text-gold-foreground font-bold">
-              Start SIP (₹{min}/mo)
-          </Button>
-      </Card>
   );
 }
